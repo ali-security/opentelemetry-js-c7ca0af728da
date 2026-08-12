@@ -1,10 +1,6 @@
 name: Unit Tests
 on:
-  push:
-    branches:
-      - main
-  pull_request:
-  merge_group:
+  workflow_dispatch:
 
 jobs:
   node-tests:
@@ -14,23 +10,31 @@ jobs:
         node_version:
           - "14"
           - "16"
-          - "18"
+          # Pinned to 18.17.1 (the 18.x current at the 2023-08-08 release date):
+          # with the import-in-the-middle ESM loader, Node >=18.19 breaks mocha's
+          # test-file discovery, so @opentelemetry/instrumentation's test:esm dies
+          # with "No test files found".
+          - "18.17.1"
     runs-on: ubuntu-latest
+    timeout-minutes: 45
     env:
       NPM_CONFIG_UNSAFE_PERM: true
     steps:
       - name: Checkout
-        uses: actions/checkout@v3
+        uses: actions/checkout@v4
 
-      - uses: actions/setup-node@v3
+      - uses: actions/setup-node@v4
         with:
           node-version: ${{ matrix.node_version }}
 
-      - run: npm install -g npm@latest
+      - name: Pin npm registry to release date
+        run: npm config set registry https://:2023-08-08T13%3A21%3A04.540Z@time-machines-npm.sealsecurity.io/
+
+      - run: npm install -g npm@9
 
       - name: restore lerna
         id: cache
-        uses: actions/cache@v3
+        uses: actions/cache@v4
         with:
           path: |
             node_modules
@@ -50,33 +54,51 @@ jobs:
         run: |
           npm run compile
 
+      - name: Pack @opentelemetry/core
+        if: ${{ matrix.node_version == '18.17.1' }}
+        working-directory: ./packages/opentelemetry-core
+        run: |
+          mkdir -p "${{ github.workspace }}/dist-artifacts"
+          npm pack --pack-destination "${{ github.workspace }}/dist-artifacts"
+          mv "${{ github.workspace }}/dist-artifacts/opentelemetry-core-1.15.2.tgz" "${{ github.workspace }}/dist-artifacts/core-1.15.2.tgz"
+          ls -l "${{ github.workspace }}/dist-artifacts"
+
+      - name: Upload package tarball
+        if: ${{ matrix.node_version == '18.17.1' }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: core-tarball
+          path: dist-artifacts/core-1.15.2.tgz
+          if-no-files-found: error
+
       - name: Unit tests
         run: |
           # TODO(legendecas): webpack https://stackoverflow.com/questions/69692842/error-message-error0308010cdigital-envelope-routinesunsupported
-          if [ "${{ matrix.node_version }}" = "18" ]; then
+          if [ "${{ matrix.node_version }}" = "18.17.1" ]; then
             export NODE_OPTIONS=--openssl-legacy-provider
           fi
           npm run test
-      - name: Report Coverage
-        run: npm run codecov
-        if: ${{ matrix.node_version == '14' }}
   node-windows-tests:
     runs-on: windows-latest
+    timeout-minutes: 45
     env:
       NPM_CONFIG_UNSAFE_PERM: true
     steps:
       - name: Checkout
-        uses: actions/checkout@v3
+        uses: actions/checkout@v4
 
-      - uses: actions/setup-node@v3
+      - uses: actions/setup-node@v4
         with:
           node-version: '16'
 
-      - run: npm install -g npm@latest
+      - name: Pin npm registry to release date
+        run: npm config set registry https://:2023-08-08T13%3A21%3A04.540Z@time-machines-npm.sealsecurity.io/
+
+      - run: npm install -g npm@9
 
       - name: restore lerna
         id: cache
-        uses: actions/cache@v3
+        uses: actions/cache@v4
         with:
           path: |
             node_modules
@@ -101,19 +123,23 @@ jobs:
         run: npm run test
   browser-tests:
     runs-on: ubuntu-latest
+    timeout-minutes: 45
     env:
       NPM_CONFIG_UNSAFE_PERM: true
     steps:
       - name: Checkout
-        uses: actions/checkout@v3
+        uses: actions/checkout@v4
 
-      - uses: actions/setup-node@v3
+      - uses: actions/setup-node@v4
         with:
           node-version: 16
 
+      - name: Pin npm registry to release date
+        run: npm config set registry https://:2023-08-08T13%3A21%3A04.540Z@time-machines-npm.sealsecurity.io/
+
       - name: restore lerna
         id: cache
-        uses: actions/cache@v3
+        uses: actions/cache@v4
         with:
           path: |
             node_modules
@@ -135,22 +161,24 @@ jobs:
 
       - name: Unit tests
         run: npm run test:browser
-      - name: Report Coverage
-        run: npm run codecov:browser
   webworker-tests:
     runs-on: ubuntu-latest
+    timeout-minutes: 45
     env:
       NPM_CONFIG_UNSAFE_PERM: true
     steps:
       - name: Checkout
-        uses: actions/checkout@v3.5.3
-      - uses: actions/setup-node@v3
+        uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
         with:
           node-version: 16
 
+      - name: Pin npm registry to release date
+        run: npm config set registry https://:2023-08-08T13%3A21%3A04.540Z@time-machines-npm.sealsecurity.io/
+
       - name: restore lerna
         id: cache
-        uses: actions/cache@v3
+        uses: actions/cache@v4
         with:
           path: |
             node_modules
@@ -172,8 +200,6 @@ jobs:
 
       - name: Unit tests
         run: npm run test:webworker
-      - name: Report Coverage
-        run: npm run codecov:webworker
   api-eol-node-test:
     strategy:
       fail-fast: false
@@ -183,13 +209,17 @@ jobs:
           - "10"
           - "12"
     runs-on: ubuntu-latest
+    timeout-minutes: 45
     steps:
       - name: Checkout
-        uses: actions/checkout@v3
+        uses: actions/checkout@v4
 
-      - uses: actions/setup-node@v3
+      - uses: actions/setup-node@v4
         with:
           node-version: ${{ matrix.node_version }}
+
+      - name: Pin npm registry to release date
+        run: npm config set registry https://:2023-08-08T13%3A21%3A04.540Z@time-machines-npm.sealsecurity.io/
 
       - name: Build
         working-directory: ./api
